@@ -2,7 +2,7 @@ import requests
 import time
 import os
 
-BEARER_TOKEN = 'AAAAAAAAAAAAAAAAAAAAAAj4AQAAAAAAPraK64zCZ9CSzdLesbE7LB%2Bw4uE%3DVJQREvQNCZJNiz3rHO7lOXlkVOQkzzdsgu6wWgcazdMUaGoUGm'
+BEARER_TOKEN = os.getenv('BEARER_TOKEN')
 LINE_TOKEN = os.getenv('LINETOKEN')
 
 
@@ -16,77 +16,99 @@ def get_followers(id):
     header = {
         "Authorization": "Bearer {}".format(BEARER_TOKEN)
     }
-
-    r = requests.get(endpoint, params=params, headers=header)
-    r.raise_for_status()
-
-    follower_list = r.json()["ids"]
-    cursor = r.json()["next_cursor"]
+    cursor = 1
     while cursor != 0:
-        params = {
-            'user_id': id,
-            'count': count,
-            'cursor': cursor
-        }
         r = requests.get(endpoint, params=params, headers=header)
-        l = r.json()["ids"]
-        cursor = r.json()["next_cursor"]
-        follower_list = follower_list + l
-
-    return follower_list
-
-
-def check_onlyaccount(id):
-    endpoint = "https://api.twitter.com/1.1/users/show.json"
-    params = {
-        'user_id': id
-    }
-    header = {
-        "Authorization": "Bearer {}".format(BEARER_TOKEN)
-    }
-    r = requests.get(endpoint, params=params, headers=header)
-    r.raise_for_status()
-    
-    follow = r.json()["friends_count"]
-    follower = r.json()["followers_count"]
-
-    if follower == 0 and follow == 1:
-        return True
-    else:
-        return False
-
-
-def search_onlyaccount(id):
-    follower_list = get_followers(id)
-
-    for i in follower_list:
         try:
-            result = check_onlyaccount(i)
+            r.raise_for_status()
+            follower_list = r.json()["ids"]
+            cursor = r.json()["next_cursor"]
+            remaining = int(r.headers['x-rate-limit-remaining'])
+            limit_reset = int(r.headers['x-rate-limit-reset'])
+        except KeyError as e:
+            print(e)
+            remaining = 0
         except Exception as e:
             print(e)
         else:
-            if result:
-                print(i)
+            l = r.json()["ids"]
+            follower_list = follower_list + l
+            cursor = r.json()["next_cursor"]
+            params = {
+                'user_id': id,
+                'count': count,
+                'cursor': cursor
+            }
         finally:
-            time.sleep(1.01)
+            if remaining == 0:
+                current_time =time.time()
+                wait_time = limit_reset - current_time + 60
+                time.sleep(wait_time)
+        
+
+def search_onlyaccount(id):
+    endpoint = "https://api.twitter.com/1.1/users/show.json"
+    follower_list = get_followers(id)
+
+    for i in follower_list:
+        remaining = 900
+        limit_reset = 0
+        params = {
+        'user_id': i
+        }
+        header = {
+            "Authorization": "Bearer {}".format(BEARER_TOKEN)
+            }
+        r = requests.get(endpoint, params=params, headers=header)
+        try:      
+            r.raise_for_status()
+            remaining = int(r.headers['x-rate-limit-remaining'])
+            limit_reset = int(r.headers['x-rate-limit-reset'])
+        except KeyError as e:
+            print(e)
+            remaining = 0
+        except Exception as e:
+            print(e)
+        else:
+            follow = r.json()["friends_count"]
+            follower = r.json()["followers_count"]
+            screen_name = r.json()['screen_name']
+            if follower == 0 and follow == 1:
+                print(i)
+                msg = '見つかりました。https://twitter.com/{}'.format(screen_name)
+                try:
+                    line_notice(LINE_TOKEN, msg)
+                except Exception as e:
+                        print(e)
+        finally:
+            if remaining == 0:
+                current_time =time.time()
+                wait_time = limit_reset - current_time + 60
+                time.sleep(wait_time)
 
 
-def line_notice(token):
+def line_notice(token, message):
     endpoint = "https://notify-api.line.me/api/notify"
     header = {
         "Authorization": "Bearer {}".format(token)
     }
-    msg = {
-        "message" :  "検索が終了しました。"
+    params = {
+        "message" :  message
         }
-    r = requests.post(endpoint, headers = header, params=msg)
+    r = requests.post(endpoint, headers = header, params=params)
     r.raise_for_status()
 
 
 def main(id):
-    search_onlyaccount(id)
     try:
-        line_notice(LINE_TOKEN)
+        line_notice(LINE_TOKEN, "検索を開始します。")
+    except Exception as e:
+        print(e)
+
+    search_onlyaccount(id)
+
+    try:
+        line_notice(LINE_TOKEN, "検索が終了しました。")
     except Exception as e:
         print(e)
 
