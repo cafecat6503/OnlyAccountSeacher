@@ -2,6 +2,8 @@ import requests
 import time
 import os
 
+from notice import line_notice
+
 BEARER_TOKEN = os.getenv('BEARER_TOKEN')
 LINE_TOKEN = os.getenv('LINETOKEN')
 
@@ -46,7 +48,7 @@ def get_followers(id):
                 time.sleep(wait_time)
         
 
-def search_onlyaccount(id):
+def search_onlyaccount(id, follower=0, follow=1):
     endpoint = "https://api.twitter.com/1.1/users/show.json"
     follower_list = get_followers(id)
 
@@ -85,18 +87,6 @@ def search_onlyaccount(id):
                 current_time =time.time()
                 wait_time = limit_reset - current_time + 60
                 time.sleep(wait_time)
-
-
-def line_notice(token, message):
-    endpoint = "https://notify-api.line.me/api/notify"
-    header = {
-        "Authorization": "Bearer {}".format(token)
-    }
-    params = {
-        "message" :  message
-        }
-    r = requests.post(endpoint, headers = header, params=params)
-    r.raise_for_status()
 
 
 def main(id):
