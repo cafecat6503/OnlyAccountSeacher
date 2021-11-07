@@ -5,7 +5,7 @@ import os
 from notice import line_notice
 
 BEARER_TOKEN = os.getenv('BEARER_TOKEN')
-LINE_TOKEN = os.getenv('LINETOKEN')
+LINE_TOKEN = os.getenv('LINE_TOKEN')
 
 
 def get_followers(id):
@@ -13,26 +13,24 @@ def get_followers(id):
     count = 5000
     params = {
         'user_id': id,
-        'count': count
+        'counts': count
     }
     header = {
         "Authorization": "Bearer {}".format(BEARER_TOKEN)
     }
     cursor = 1
+    follower_list = []
     while cursor != 0:
         r = requests.get(endpoint, params=params, headers=header)
         try:
             r.raise_for_status()
-            follower_list = r.json()["ids"]
-            cursor = r.json()["next_cursor"]
-            remaining = int(r.headers['x-rate-limit-remaining'])
-            limit_reset = int(r.headers['x-rate-limit-reset'])
-        except KeyError as e:
-            print(e)
-            remaining = 0
         except Exception as e:
             print(e)
+            remaining = int(r.headers['x-rate-limit-remaining'])
+            limit_reset = int(r.headers['x-rate-limit-reset'])
         else:
+            remaining = int(r.headers['x-rate-limit-remaining'])
+            limit_reset = int(r.headers['x-rate-limit-reset'])
             l = r.json()["ids"]
             follower_list = follower_list + l
             cursor = r.json()["next_cursor"]
@@ -46,15 +44,15 @@ def get_followers(id):
                 current_time =time.time()
                 wait_time = limit_reset - current_time + 60
                 time.sleep(wait_time)
-        
 
-def search_onlyaccount(id, follower=0, follow=1):
+    return follower_list    
+
+
+def check_onlyaccount(id, follower=0, follow=1):
     endpoint = "https://api.twitter.com/1.1/users/show.json"
     follower_list = get_followers(id)
 
     for i in follower_list:
-        remaining = 900
-        limit_reset = 0
         params = {
         'user_id': i
         }
@@ -64,13 +62,13 @@ def search_onlyaccount(id, follower=0, follow=1):
         r = requests.get(endpoint, params=params, headers=header)
         try:      
             r.raise_for_status()
-            remaining = int(r.headers['x-rate-limit-remaining'])
-            limit_reset = int(r.headers['x-rate-limit-reset'])
-        except KeyError as e:
-            print(e)
-            remaining = 0
-        except Exception as e:
-            print(e)
+        except requests.exceptions.HTTPError as e:
+            if r.status_code in (420, 429):
+                remaining = int(r.headers['x-rate-limit-remaining'])
+                limit_reset = int(r.headers['x-rate-limit-reset'])
+                current_time = time.time()
+                wait_time = limit_reset - current_time + 5
+                time.sleep(wait_time)
         else:
             follow = r.json()["friends_count"]
             follower = r.json()["followers_count"]
@@ -83,9 +81,11 @@ def search_onlyaccount(id, follower=0, follow=1):
                 except Exception as e:
                         print(e)
         finally:
+            remaining = int(r.headers['x-rate-limit-remaining'])
             if remaining == 0:
+                limit_reset = int(r.headers['x-rate-limit-reset'])
                 current_time =time.time()
-                wait_time = limit_reset - current_time + 60
+                wait_time = limit_reset - current_time + 5
                 time.sleep(wait_time)
 
 
@@ -95,7 +95,7 @@ def main(id):
     except Exception as e:
         print(e)
 
-    search_onlyaccount(id)
+    check_onlyaccount(id)
 
     try:
         line_notice(LINE_TOKEN, "検索が終了しました。")
